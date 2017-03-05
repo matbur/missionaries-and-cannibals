@@ -8,13 +8,13 @@ const (
 	MAX = 3
 	MIN = 0
 
-	EATEN_RIGHT = 1
-	EATEN_LEFT  = 2
-	LOOP        = 3
-	MANY_M      = 4
-	MANY_K      = 5
-	FEW_M       = 6
-	FEW_K       = 7
+	LOOP        = 1
+	MANY_M      = 2
+	MANY_K      = 3
+	FEW_M       = 4
+	FEW_K       = 5
+	EATEN_RIGHT = 6
+	EATEN_LEFT  = 7
 	FINISHED    = 8
 )
 
@@ -64,11 +64,9 @@ func (s State) apply(m Move) State {
 
 	if s.m > MIN && s.k > s.m {
 		s.end = EATEN_RIGHT
-		return s
 	}
 	if s.m < MAX && s.m > s.k {
 		s.end = EATEN_LEFT
-		return s
 	}
 	if s.m == MIN && s.k == MIN {
 		s.end = FINISHED
@@ -192,8 +190,12 @@ func (t Tree) String() string {
 	return s
 }
 
-func isValid(i int) bool {
-	return i < LOOP || i == FINISHED
+func (t *Tree) printSuccess() {
+	for _, v := range t.tab {
+		if v.end == FINISHED {
+			fmt.Println(v)
+		}
+	}
 }
 
 func main() {
@@ -210,16 +212,20 @@ func main() {
 	t := NewTree(p)
 
 	for t.end == 0 {
-		l := len(t.tab)
-		for i := l - 1; i > -1; i-- {
-			p := t.pop(i)
-			for _, v := range m {
-				pp := NewPath(p)
-				pp.apply(v)
+		p := t.pop(0)
+		if p.end > FEW_K {
+			t.add(p)
+			continue
+		}
+		for _, v := range m {
+			pp := NewPath(p)
+			pp.apply(v)
+			if pp.end > FEW_K || pp.end == 0 {
 				t.add(pp)
 			}
 		}
 	}
 
-	fmt.Println(t)
+	fmt.Println(t, "\n\n")
+	t.printSuccess()
 }
