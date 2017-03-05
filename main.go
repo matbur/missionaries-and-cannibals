@@ -5,8 +5,9 @@ import (
 )
 
 const (
-	MAX         = 3
-	MIN         = 0
+	MAX = 3
+	MIN = 0
+
 	EATEN_RIGHT = 1
 	EATEN_LEFT  = 2
 	LOOP        = 3
@@ -22,31 +23,27 @@ type Move struct {
 }
 
 type State struct {
-	end     bool
-	reason  int
+	end     int
 	onRight bool
 	m, k    int
 }
 
 func NewState() State {
-	return State{false, 0, true, MAX, MAX}
+	return State{0, true, MAX, MAX}
 }
 
 func (s State) apply(m Move) State {
-	if s.end {
+	if s.end != 0 {
 		return s
 	}
 
 	if s.onRight {
 		if s.m-m.m < MIN {
-			s.end = true
-			s.reason = FEW_M
+			s.end = FEW_M
 			return s
 		}
-
 		if s.k-m.k < MIN {
-			s.end = true
-			s.reason = FEW_K
+			s.end = FEW_K
 			return s
 		}
 		s.m -= m.m
@@ -54,13 +51,11 @@ func (s State) apply(m Move) State {
 
 	} else {
 		if s.m+m.m > MAX {
-			s.end = true
-			s.reason = MANY_M
+			s.end = MANY_M
 			return s
 		}
 		if s.k+m.k > MAX {
-			s.end = true
-			s.reason = MANY_K
+			s.end = MANY_K
 			return s
 		}
 		s.m += m.m
@@ -68,21 +63,15 @@ func (s State) apply(m Move) State {
 	}
 
 	if s.m > MIN && s.k > s.m {
-		s.end = true
-		s.reason = EATEN_RIGHT
+		s.end = EATEN_RIGHT
 		return s
 	}
-
 	if s.m < MAX && s.m > s.k {
-		s.end = true
-		s.reason = EATEN_LEFT
+		s.end = EATEN_LEFT
 		return s
 	}
-
 	if s.m == MIN && s.k == MIN {
-		s.end = true
-		s.reason = FINISHED
-		return s
+		s.end = FINISHED
 	}
 
 	s.onRight = !s.onRight
@@ -90,22 +79,23 @@ func (s State) apply(m Move) State {
 }
 
 type Path struct {
-	end    bool
-	reason int
-	tab    []State
+	end int
+	tab []State
 }
 
-func NewPath(s State) Path {
-	return Path{false, 0, []State{s}}
-}
-func NewPath2(p Path) Path {
-	pp := Path{false, 0, []State{}}
-	pp.tab = append(pp.tab, p.tab...)
-	return pp
+func NewPath(i interface{}) Path {
+	tab := []State{}
+	switch i.(type) {
+	case State:
+		tab = append(tab, i.(State))
+	case Path:
+		tab = append(tab, i.(Path).tab...)
+	}
+	return Path{0, tab}
 }
 
 func (p Path) String() string {
-	s := fmt.Sprintf("\te: %t %d\n", p.end, p.reason)
+	s := fmt.Sprintf("\te: %v\n", p.end)
 	for i, v := range p.tab {
 		s += fmt.Sprintf("\t\t%d: %v\n", i, v)
 	}
@@ -122,20 +112,23 @@ func (p Path) isIn(s State) bool {
 }
 
 func (p *Path) add(s State) {
-	if p.end {
+	if p.end != 0 {
+		//fmt.Println(p.reason)
 		return
 	}
 
-	p.end = s.end
-	p.reason = s.reason
-
 	if p.isIn(s) {
-		p.end = true
-		p.reason = LOOP
+		p.end = LOOP
 		return
 	}
 
 	p.tab = append(p.tab, s)
+	p.end = s.end
+}
+
+func (p *Path) apply(m Move) {
+	s := p.getLast().apply(m)
+	p.add(s)
 }
 
 func (p *Path) getLast() State {
@@ -143,13 +136,12 @@ func (p *Path) getLast() State {
 }
 
 type Tree struct {
-	end    bool
-	reason int
-	tab    []Path
+	end int
+	tab []Path
 }
 
 func NewTree(p Path) Tree {
-	return Tree{false, 0, []Path{p}}
+	return Tree{0, []Path{p}}
 }
 
 func (t Tree) isIn(p Path) bool {
@@ -158,13 +150,11 @@ out:
 		if len(path.tab) != len(p.tab) {
 			continue
 		}
-
 		for i := 0; i < len(p.tab); i++ {
 			if p.tab[i] != path.tab[i] {
 				continue out
 			}
 		}
-
 		return true
 	}
 	return false
@@ -177,14 +167,15 @@ func (t *Tree) add(p Path) {
 
 	t.tab = append(t.tab, p)
 
-	t.end = true
 	for _, v := range t.tab {
-		if !v.end {
-			t.end = false
+		if v.end == 0 {
+			t.end = 0
 			return
 		}
+		if t.end < v.end {
+			t.end = v.end
+		}
 	}
-	t.reason = FINISHED
 }
 
 func (t *Tree) pop(i int) Path {
@@ -194,11 +185,15 @@ func (t *Tree) pop(i int) Path {
 }
 
 func (t Tree) String() string {
-	s := fmt.Sprintf("e: %t %d\n", t.end, t.reason)
+	s := fmt.Sprintf("e: %v\n", t.end)
 	for i, v := range t.tab {
 		s += fmt.Sprintf("%d:\n%v\n", i, v)
 	}
 	return s
+}
+
+func isValid(i int) bool {
+	return i < LOOP || i == FINISHED
 }
 
 func main() {
@@ -214,25 +209,17 @@ func main() {
 	p := NewPath(s)
 	t := NewTree(p)
 
-	for !t.end {
+	for t.end == 0 {
 		l := len(t.tab)
-		for i := 0; i < l; i++ {
-			p := t.tab[i]
-			t.pop(i)
+		for i := l - 1; i > -1; i-- {
+			p := t.pop(i)
 			for _, v := range m {
-				pp := NewPath2(p)
-				ss := pp.getLast().apply(v)
-				pp.add(ss)
+				pp := NewPath(p)
+				pp.apply(v)
 				t.add(pp)
 			}
 		}
 	}
 
-	//fmt.Println(t)
-	for i, v := range t.tab {
-		s := v.getLast()
-		if s.m == MIN && s.k == MIN {
-			fmt.Println(i, v)
-		}
-	}
+	fmt.Println(t)
 }
