@@ -1,0 +1,15 @@
+syntax = "proto3";
+package errors;
+
+
+enum Error {
+    Error_UNKNOWN = 0;
+	LOOP          = 1;
+	MANY_M        = 2;
+	MANY_K        = 3;
+	FEW_M         = 4;
+	FEW_K         = 5;
+	EATEN_RIGHT   = 6;
+	EATEN_LEFT    = 7;
+	FINISHED      = 8;
+}

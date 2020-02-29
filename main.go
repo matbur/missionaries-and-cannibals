@@ -2,20 +2,13 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/matbur/missionaries-and-cannibals/errors"
 )
 
 const (
 	MAX = 3
 	MIN = 0
-
-	LOOP        = 1
-	MANY_M      = 2
-	MANY_K      = 3
-	FEW_M       = 4
-	FEW_K       = 5
-	EATEN_RIGHT = 6
-	EATEN_LEFT  = 7
-	FINISHED    = 8
 )
 
 func main() {
@@ -33,20 +26,21 @@ func main() {
 
 	for t.end == 0 {
 		p := t.pop(0)
-		if p.end > FEW_K {
+		if p.end > errors.Error_FEW_K {
 			t.add(p)
 			continue
 		}
 		for _, v := range m {
 			pp := NewPath(p)
 			pp.apply(v)
-			if pp.end > FEW_K || pp.end == 0 {
+			if pp.end > errors.Error_FEW_K || pp.end == 0 {
 				t.add(pp)
 			}
 		}
 	}
 
 	fmt.Printf("%s\n\n\n", t)
+	fmt.Println("SUCCESS:")
 	t.printSuccess()
 }
 
@@ -55,7 +49,7 @@ type Move struct {
 }
 
 type State struct {
-	end     int
+	end     errors.Error
 	onRight bool
 	m, k    int
 }
@@ -71,11 +65,11 @@ func (s State) apply(m Move) State {
 
 	if s.onRight {
 		if s.m-m.m < MIN {
-			s.end = FEW_M
+			s.end = errors.Error_FEW_M
 			return s
 		}
 		if s.k-m.k < MIN {
-			s.end = FEW_K
+			s.end = errors.Error_FEW_K
 			return s
 		}
 		s.m -= m.m
@@ -83,11 +77,11 @@ func (s State) apply(m Move) State {
 
 	} else {
 		if s.m+m.m > MAX {
-			s.end = MANY_M
+			s.end = errors.Error_MANY_M
 			return s
 		}
 		if s.k+m.k > MAX {
-			s.end = MANY_K
+			s.end = errors.Error_MANY_K
 			return s
 		}
 		s.m += m.m
@@ -95,13 +89,13 @@ func (s State) apply(m Move) State {
 	}
 
 	if s.m > MIN && s.k > s.m {
-		s.end = EATEN_RIGHT
+		s.end = errors.Error_EATEN_RIGHT
 	}
 	if s.m < MAX && s.m > s.k {
-		s.end = EATEN_LEFT
+		s.end = errors.Error_EATEN_LEFT
 	}
 	if s.m == MIN && s.k == MIN {
-		s.end = FINISHED
+		s.end = errors.Error_FINISHED
 	}
 
 	s.onRight = !s.onRight
@@ -109,7 +103,7 @@ func (s State) apply(m Move) State {
 }
 
 type Path struct {
-	end int
+	end errors.Error
 	tab []State
 }
 
@@ -125,9 +119,9 @@ func NewPath(i interface{}) Path {
 }
 
 func (p Path) String() string {
-	s := fmt.Sprintf("\te: %v\n", p.end)
+	s := fmt.Sprintf("\te: %+v\n", p.end)
 	for i, v := range p.tab {
-		s += fmt.Sprintf("\t\t%d: %v\n", i, v)
+		s += fmt.Sprintf("\t\t%v: %+v\n", i, v)
 	}
 	return s
 }
@@ -143,12 +137,11 @@ func (p Path) isIn(s State) bool {
 
 func (p *Path) add(s State) {
 	if p.end != 0 {
-		//fmt.Println(p.reason)
 		return
 	}
 
 	if p.isIn(s) {
-		p.end = LOOP
+		p.end = errors.Error_LOOP
 		return
 	}
 
@@ -166,7 +159,7 @@ func (p *Path) getLast() State {
 }
 
 type Tree struct {
-	end int
+	end errors.Error
 	tab []Path
 }
 
@@ -215,16 +208,16 @@ func (t *Tree) pop(i int) Path {
 }
 
 func (t Tree) String() string {
-	s := fmt.Sprintf("e: %v\n", t.end)
+	s := fmt.Sprintf("e: %+v\n", t.end)
 	for i, v := range t.tab {
-		s += fmt.Sprintf("%d:\n%v\n", i, v)
+		s += fmt.Sprintf("%v:\n%+v\n", i, v)
 	}
 	return s
 }
 
 func (t *Tree) printSuccess() {
 	for _, v := range t.tab {
-		if v.end == FINISHED {
+		if v.end == errors.Error_FINISHED {
 			fmt.Println(v)
 		}
 	}
