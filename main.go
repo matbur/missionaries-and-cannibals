@@ -18,6 +18,38 @@ const (
 	FINISHED    = 8
 )
 
+func main() {
+	m := []Move{
+		{2, 0},
+		{1, 0},
+		{1, 1},
+		{0, 1},
+		{0, 2},
+	}
+
+	s := NewState()
+	p := NewPath(s)
+	t := NewTree(p)
+
+	for t.end == 0 {
+		p := t.pop(0)
+		if p.end > FEW_K {
+			t.add(p)
+			continue
+		}
+		for _, v := range m {
+			pp := NewPath(p)
+			pp.apply(v)
+			if pp.end > FEW_K || pp.end == 0 {
+				t.add(pp)
+			}
+		}
+	}
+
+	fmt.Printf("%s\n\n\n", t)
+	t.printSuccess()
+}
+
 type Move struct {
 	m, k int
 }
@@ -196,36 +228,4 @@ func (t *Tree) printSuccess() {
 			fmt.Println(v)
 		}
 	}
-}
-
-func main() {
-	m := []Move{
-		{2, 0},
-		{1, 0},
-		{1, 1},
-		{0, 1},
-		{0, 2},
-	}
-
-	s := NewState()
-	p := NewPath(s)
-	t := NewTree(p)
-
-	for t.end == 0 {
-		p := t.pop(0)
-		if p.end > FEW_K {
-			t.add(p)
-			continue
-		}
-		for _, v := range m {
-			pp := NewPath(p)
-			pp.apply(v)
-			if pp.end > FEW_K || pp.end == 0 {
-				t.add(pp)
-			}
-		}
-	}
-
-	fmt.Println(t, "\n\n")
-	t.printSuccess()
 }
