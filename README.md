@@ -50,6 +50,6 @@ go run main.go
 ## Building proto
 
 ```
-go get -v -u github.com/golang/protobuf/protoc-gen-go
-protoc -I=./errors --go_out=./errors ./errors/errors.proto
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+protoc -I=./errors --go_out=. --go_opt=module=github.com/matbur/missionaries-and-cannibals ./errors/errors.proto
 ```
