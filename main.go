@@ -9,261 +9,325 @@ import (
 	"github.com/matbur/missionaries-and-cannibals/errors"
 )
 
-const (
-	MAX = 3
-	MIN = 0
-)
+const bankSize = 3
+
+// All legal boat loads: at most two people, at least one passenger.
+var allMoves = []Move{
+	{missionaries: 2, cannibals: 0},
+	{missionaries: 1, cannibals: 0},
+	{missionaries: 1, cannibals: 1},
+	{missionaries: 0, cannibals: 1},
+	{missionaries: 0, cannibals: 2},
+}
 
 func main() {
-	m := []Move{
-		{2, 0},
-		{1, 0},
-		{1, 1},
-		{0, 1},
-		{0, 2},
-	}
-
-	s := NewState()
-	p := NewPath(s)
-	t := NewTree(p)
-
-	for t.end == 0 {
-		p := t.pop(0)
-		if p.end > errors.Error_FEW_K {
-			t.add(p)
-			continue
-		}
-		for _, v := range m {
-			pp := NewPath(p)
-			pp.apply(v)
-			if pp.end > errors.Error_FEW_K || pp.end == 0 {
-				t.add(pp)
-			}
-		}
-	}
-
-	t.printSummary(os.Stdout)
+	tree := newSearchTree(newPath(initialState()))
+	tree.search(allMoves)
+	tree.printSummary(os.Stdout)
 }
 
 type Move struct {
-	m, k int
+	missionaries int
+	cannibals    int
 }
 
+// State describes one point in the puzzle.
+// leftMissionaries and leftCannibals count people on the left bank.
+// boatOnLeft is true when the boat is on the left bank.
 type State struct {
-	end     errors.Error
-	onRight bool
-	m, k    int
+	outcome          errors.Error
+	boatOnLeft       bool
+	leftMissionaries int
+	leftCannibals    int
 }
 
-func NewState() State {
-	return State{0, true, MAX, MAX}
+func initialState() State {
+	return State{
+		outcome:          errors.Error_Error_UNKNOWN,
+		boatOnLeft:       true,
+		leftMissionaries: bankSize,
+		leftCannibals:    bankSize,
+	}
 }
 
-func (s State) apply(m Move) State {
-	if s.end != 0 {
+func (s State) rightMissionaries() int { return bankSize - s.leftMissionaries }
+func (s State) rightCannibals() int    { return bankSize - s.leftCannibals }
+
+func (s State) isOngoing() bool {
+	return s.outcome == errors.Error_Error_UNKNOWN
+}
+
+func (s State) apply(move Move) State {
+	if !s.isOngoing() {
 		return s
 	}
 
-	if s.onRight {
-		if s.m-m.m < MIN {
-			s.end = errors.Error_FEW_M
-			return s
-		}
-		if s.k-m.k < MIN {
-			s.end = errors.Error_FEW_K
-			return s
-		}
-		s.m -= m.m
-		s.k -= m.k
-
-	} else {
-		if s.m+m.m > MAX {
-			s.end = errors.Error_MANY_M
-			return s
-		}
-		if s.k+m.k > MAX {
-			s.end = errors.Error_MANY_K
-			return s
-		}
-		s.m += m.m
-		s.k += m.k
+	next := s
+	if err := next.transfer(move); err != errors.Error_Error_UNKNOWN {
+		next.outcome = err
+		return next
 	}
 
-	if s.m > MIN && s.k > s.m {
-		s.end = errors.Error_EATEN_RIGHT
-	}
-	if s.m < MAX && s.m > s.k {
-		s.end = errors.Error_EATEN_LEFT
-	}
-	if s.m == MIN && s.k == MIN {
-		s.end = errors.Error_FINISHED
+	next.outcome = next.checkSafety()
+	if next.isOngoing() && next.leftMissionaries == 0 && next.leftCannibals == 0 {
+		next.outcome = errors.Error_FINISHED
 	}
 
-	s.onRight = !s.onRight
-	return s
+	next.boatOnLeft = !next.boatOnLeft
+	return next
 }
 
-type Path struct {
-	end errors.Error
-	tab []State
+func (s *State) transfer(move Move) errors.Error {
+	if s.boatOnLeft {
+		if s.leftMissionaries-move.missionaries < 0 {
+			return errors.Error_FEW_M
+		}
+		if s.leftCannibals-move.cannibals < 0 {
+			return errors.Error_FEW_K
+		}
+		s.leftMissionaries -= move.missionaries
+		s.leftCannibals -= move.cannibals
+		return errors.Error_Error_UNKNOWN
+	}
+
+	if s.leftMissionaries+move.missionaries > bankSize {
+		return errors.Error_MANY_M
+	}
+	if s.leftCannibals+move.cannibals > bankSize {
+		return errors.Error_MANY_K
+	}
+	s.leftMissionaries += move.missionaries
+	s.leftCannibals += move.cannibals
+	return errors.Error_Error_UNKNOWN
 }
 
-func NewPath(i interface{}) Path {
-	tab := []State{}
-	switch i.(type) {
-	case State:
-		tab = append(tab, i.(State))
-	case Path:
-		tab = append(tab, i.(Path).tab...)
+func (s State) checkSafety() errors.Error {
+	if s.leftMissionaries > 0 && s.leftCannibals > s.leftMissionaries {
+		return errors.Error_EATEN_RIGHT
 	}
-	return Path{0, tab}
+	if s.leftMissionaries < bankSize && s.leftMissionaries > s.leftCannibals {
+		return errors.Error_EATEN_LEFT
+	}
+	return errors.Error_Error_UNKNOWN
 }
 
 func (s State) label() string {
-	boat := "left"
-	if !s.onRight {
-		boat = "right"
+	boat := "right"
+	if s.boatOnLeft {
+		boat = "left"
 	}
 	return fmt.Sprintf(
 		"Left: %dM %dC  |  Right: %dM %dC  |  Boat: %s",
-		s.m, s.k, MAX-s.m, MAX-s.k, boat,
+		s.leftMissionaries, s.leftCannibals,
+		s.rightMissionaries(), s.rightCannibals(),
+		boat,
 	)
 }
 
-func moveLabel(from, to State) string {
-	dm := from.m - to.m
-	dk := from.k - to.k
-	if dm > 0 || dk > 0 {
-		return fmt.Sprintf("Move %dM + %dC to the right", dm, dk)
-	}
-	return fmt.Sprintf("Move %dM + %dC to the left", -dm, -dk)
+type Path struct {
+	outcome errors.Error
+	states  []State
 }
 
-func (p Path) String() string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Outcome: %s (%d steps)\n", p.end, len(p.tab)-1)
-	for i, state := range p.tab {
-		if i == 0 {
-			fmt.Fprintf(&b, "  Start: %s\n", state.label())
-			continue
-		}
-		fmt.Fprintf(&b, "  %2d. %s\n", i, moveLabel(p.tab[i-1], state))
-		fmt.Fprintf(&b, "      %s\n", state.label())
+func newPath(start State) Path {
+	return Path{
+		outcome: errors.Error_Error_UNKNOWN,
+		states:  []State{start},
 	}
-	return b.String()
 }
 
-func (p Path) isIn(s State) bool {
-	for _, v := range p.tab {
-		if s == v {
+func (p Path) clone() Path {
+	states := make([]State, len(p.states))
+	copy(states, p.states)
+	// Outcome is recomputed as new states are appended (see original NewPath).
+	return Path{
+		outcome: errors.Error_Error_UNKNOWN,
+		states:  states,
+	}
+}
+
+func (p Path) lastState() State {
+	return p.states[len(p.states)-1]
+}
+
+func (p Path) contains(state State) bool {
+	for _, seen := range p.states {
+		if seen == state {
 			return true
 		}
 	}
 	return false
 }
 
-func (p *Path) add(s State) {
-	if p.end != 0 {
+func (p *Path) append(state State) {
+	if !p.isOngoing() {
 		return
 	}
-
-	if p.isIn(s) {
-		p.end = errors.Error_LOOP
+	if p.contains(state) {
+		p.outcome = errors.Error_LOOP
 		return
 	}
-
-	p.tab = append(p.tab, s)
-	p.end = s.end
+	p.states = append(p.states, state)
+	p.outcome = state.outcome
 }
 
-func (p *Path) apply(m Move) {
-	s := p.getLast().apply(m)
-	p.add(s)
+func (p Path) isOngoing() bool {
+	return p.outcome == errors.Error_Error_UNKNOWN
 }
 
-func (p *Path) getLast() State {
-	return p.tab[len(p.tab)-1]
+func (p *Path) tryMove(move Move) {
+	next := p.lastState().apply(move)
+	p.append(next)
 }
 
-type Tree struct {
-	end errors.Error
-	tab []Path
+func moveLabel(from, to State) string {
+	dMissionaries := from.leftMissionaries - to.leftMissionaries
+	dCannibals := from.leftCannibals - to.leftCannibals
+	if dMissionaries > 0 || dCannibals > 0 {
+		return fmt.Sprintf("Move %dM + %dC to the right", dMissionaries, dCannibals)
+	}
+	return fmt.Sprintf("Move %dM + %dC to the left", -dMissionaries, -dCannibals)
 }
 
-func NewTree(p Path) Tree {
-	return Tree{0, []Path{p}}
-}
-
-func (t Tree) isIn(p Path) bool {
-out:
-	for _, path := range t.tab {
-		if len(path.tab) != len(p.tab) {
+func (p Path) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Outcome: %s (%d steps)\n", p.outcome, len(p.states)-1)
+	for i, state := range p.states {
+		if i == 0 {
+			fmt.Fprintf(&b, "  Start: %s\n", state.label())
 			continue
 		}
-		for i := 0; i < len(p.tab); i++ {
-			if p.tab[i] != path.tab[i] {
-				continue out
-			}
-		}
-		return true
+		fmt.Fprintf(&b, "  %2d. %s\n", i, moveLabel(p.states[i-1], state))
+		fmt.Fprintf(&b, "      %s\n", state.label())
 	}
-	return false
-}
-
-func (t *Tree) add(p Path) {
-	if t.isIn(p) {
-		return
-	}
-
-	t.tab = append(t.tab, p)
-
-	for _, v := range t.tab {
-		if v.end == 0 {
-			t.end = 0
-			return
-		}
-		if t.end < v.end {
-			t.end = v.end
-		}
-	}
-}
-
-func (t *Tree) pop(i int) Path {
-	p := t.tab[i]
-	t.tab = append(t.tab[:i], t.tab[i+1:]...)
-	return p
-}
-
-func (t Tree) successPaths() []Path {
-	var out []Path
-	seen := make(map[string]struct{})
-	for _, p := range t.tab {
-		if p.end != errors.Error_FINISHED {
-			continue
-		}
-		key := p.moveKey()
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, p)
-	}
-	return out
+	return b.String()
 }
 
 func (p Path) moveKey() string {
-	var moves []string
-	for i := 1; i < len(p.tab); i++ {
-		moves = append(moves, moveLabel(p.tab[i-1], p.tab[i]))
+	moves := make([]string, 0, len(p.states)-1)
+	for i := 1; i < len(p.states); i++ {
+		moves = append(moves, moveLabel(p.states[i-1], p.states[i]))
 	}
 	return strings.Join(moves, "|")
 }
 
-func (t Tree) printSummary(w io.Writer) {
+type SearchTree struct {
+	outcome errors.Error
+	paths   []Path
+}
+
+func newSearchTree(root Path) SearchTree {
+	return SearchTree{
+		outcome: errors.Error_Error_UNKNOWN,
+		paths:   []Path{root},
+	}
+}
+
+func (t SearchTree) contains(path Path) bool {
+	for _, existing := range t.paths {
+		if pathsEqual(existing, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathsEqual(a, b Path) bool {
+	if len(a.states) != len(b.states) {
+		return false
+	}
+	for i := range a.states {
+		if a.states[i] != b.states[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *SearchTree) add(path Path) {
+	if t.contains(path) {
+		return
+	}
+	t.paths = append(t.paths, path)
+}
+
+func (t *SearchTree) hasOngoingPaths() bool {
+	for _, path := range t.paths {
+		if path.isOngoing() {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *SearchTree) recomputeOutcome() {
+	t.outcome = errors.Error_Error_UNKNOWN
+	for _, path := range t.paths {
+		if path.isOngoing() {
+			return
+		}
+		if t.outcome < path.outcome {
+			t.outcome = path.outcome
+		}
+	}
+}
+
+func (t *SearchTree) popFront() Path {
+	front := t.paths[0]
+	t.paths = t.paths[1:]
+	return front
+}
+
+// search explores every valid sequence of moves breadth-first.
+func (t *SearchTree) search(moves []Move) {
+	for t.hasOngoingPaths() {
+		current := t.popFront()
+
+		// Terminal paths (success or hard failure) are kept but not expanded.
+		if isTerminalOutcome(current.outcome) {
+			t.add(current)
+			continue
+		}
+
+		for _, move := range moves {
+			candidate := current.clone()
+			candidate.tryMove(move)
+			if candidate.isOngoing() || isTerminalOutcome(candidate.outcome) {
+				t.add(candidate)
+			}
+		}
+	}
+	t.recomputeOutcome()
+}
+
+// Invalid move attempts (too few people on a bank) are discarded.
+// Everything else is worth keeping in the search tree.
+func isTerminalOutcome(outcome errors.Error) bool {
+	return outcome > errors.Error_FEW_K
+}
+
+func (t SearchTree) successPaths() []Path {
+	var solutions []Path
+	seen := make(map[string]struct{})
+	for _, path := range t.paths {
+		if path.outcome != errors.Error_FINISHED {
+			continue
+		}
+		key := path.moveKey()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		solutions = append(solutions, path)
+	}
+	return solutions
+}
+
+func (t SearchTree) printSummary(w io.Writer) {
 	failures := make(map[errors.Error]int)
-	for _, p := range t.tab {
-		if p.end != errors.Error_FINISHED && p.end != 0 {
-			failures[p.end]++
+	for _, path := range t.paths {
+		if path.outcome != errors.Error_FINISHED && !path.isOngoing() {
+			failures[path.outcome]++
 		}
 	}
 
@@ -271,8 +335,8 @@ func (t Tree) printSummary(w io.Writer) {
 
 	fmt.Fprintln(w, "Missionaries and Cannibals")
 	fmt.Fprintln(w, strings.Repeat("=", 40))
-	fmt.Fprintf(w, "Search finished: %s\n", t.end)
-	fmt.Fprintf(w, "Paths explored:  %d\n", len(t.tab))
+	fmt.Fprintf(w, "Search finished: %s\n", t.outcome)
+	fmt.Fprintf(w, "Paths explored:  %d\n", len(t.paths))
 	fmt.Fprintf(w, "Solutions found: %d\n", len(solutions))
 	if len(failures) > 0 {
 		fmt.Fprintln(w, "\nFailed paths:")
@@ -287,8 +351,8 @@ func (t Tree) printSummary(w io.Writer) {
 	}
 
 	fmt.Fprintln(w, "\nSolutions:")
-	for i, p := range solutions {
-		fmt.Fprintf(w, "\n--- Solution %d (%d moves) ---\n", i+1, len(p.tab)-1)
-		fmt.Fprint(w, p)
+	for i, path := range solutions {
+		fmt.Fprintf(w, "\n--- Solution %d (%d moves) ---\n", i+1, len(path.states)-1)
+		fmt.Fprint(w, path)
 	}
 }
