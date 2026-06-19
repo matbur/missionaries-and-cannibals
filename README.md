@@ -41,15 +41,22 @@ If this rule is broken, the path is invalid:
 
 The program explores all valid move sequences using breadth-first search over a tree of states. It prints a summary of explored paths and lists every distinct winning solution.
 
-## Running
+## Usage
 
 ```
-go run main.go
+make run
 ```
 
-## Building proto
+Build a binary:
 
 ```
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-protoc -I=./errors --go_out=. --go_opt=module=github.com/matbur/missionaries-and-cannibals ./errors/errors.proto
+make build
 ```
+
+Regenerate protobuf code:
+
+```
+make proto
+```
+
+Other targets: `make help`, `make tidy`, `make clean`.
