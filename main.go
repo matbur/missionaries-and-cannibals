@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
 	"github.com/matbur/missionaries-and-cannibals/errors"
 )
@@ -39,9 +42,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("%s\n\n\n", t)
-	fmt.Println("SUCCESS:")
-	t.printSuccess()
+	t.printSummary(os.Stdout)
 }
 
 type Move struct {
@@ -118,12 +119,38 @@ func NewPath(i interface{}) Path {
 	return Path{0, tab}
 }
 
-func (p Path) String() string {
-	s := fmt.Sprintf("\te: %+v\n", p.end)
-	for i, v := range p.tab {
-		s += fmt.Sprintf("\t\t%v: %+v\n", i, v)
+func (s State) label() string {
+	boat := "left"
+	if !s.onRight {
+		boat = "right"
 	}
-	return s
+	return fmt.Sprintf(
+		"Left: %dM %dC  |  Right: %dM %dC  |  Boat: %s",
+		s.m, s.k, MAX-s.m, MAX-s.k, boat,
+	)
+}
+
+func moveLabel(from, to State) string {
+	dm := from.m - to.m
+	dk := from.k - to.k
+	if dm > 0 || dk > 0 {
+		return fmt.Sprintf("Move %dM + %dC to the right", dm, dk)
+	}
+	return fmt.Sprintf("Move %dM + %dC to the left", -dm, -dk)
+}
+
+func (p Path) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Outcome: %s (%d steps)\n", p.end, len(p.tab)-1)
+	for i, state := range p.tab {
+		if i == 0 {
+			fmt.Fprintf(&b, "  Start: %s\n", state.label())
+			continue
+		}
+		fmt.Fprintf(&b, "  %2d. %s\n", i, moveLabel(p.tab[i-1], state))
+		fmt.Fprintf(&b, "      %s\n", state.label())
+	}
+	return b.String()
 }
 
 func (p Path) isIn(s State) bool {
@@ -207,18 +234,61 @@ func (t *Tree) pop(i int) Path {
 	return p
 }
 
-func (t Tree) String() string {
-	s := fmt.Sprintf("e: %+v\n", t.end)
-	for i, v := range t.tab {
-		s += fmt.Sprintf("%v:\n%+v\n", i, v)
+func (t Tree) successPaths() []Path {
+	var out []Path
+	seen := make(map[string]struct{})
+	for _, p := range t.tab {
+		if p.end != errors.Error_FINISHED {
+			continue
+		}
+		key := p.moveKey()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, p)
 	}
-	return s
+	return out
 }
 
-func (t *Tree) printSuccess() {
-	for _, v := range t.tab {
-		if v.end == errors.Error_FINISHED {
-			fmt.Println(v)
+func (p Path) moveKey() string {
+	var moves []string
+	for i := 1; i < len(p.tab); i++ {
+		moves = append(moves, moveLabel(p.tab[i-1], p.tab[i]))
+	}
+	return strings.Join(moves, "|")
+}
+
+func (t Tree) printSummary(w io.Writer) {
+	failures := make(map[errors.Error]int)
+	for _, p := range t.tab {
+		if p.end != errors.Error_FINISHED && p.end != 0 {
+			failures[p.end]++
 		}
+	}
+
+	solutions := t.successPaths()
+
+	fmt.Fprintln(w, "Missionaries and Cannibals")
+	fmt.Fprintln(w, strings.Repeat("=", 40))
+	fmt.Fprintf(w, "Search finished: %s\n", t.end)
+	fmt.Fprintf(w, "Paths explored:  %d\n", len(t.tab))
+	fmt.Fprintf(w, "Solutions found: %d\n", len(solutions))
+	if len(failures) > 0 {
+		fmt.Fprintln(w, "\nFailed paths:")
+		for err, count := range failures {
+			fmt.Fprintf(w, "  %-14s %d\n", err, count)
+		}
+	}
+
+	if len(solutions) == 0 {
+		fmt.Fprintln(w, "\nNo solution found.")
+		return
+	}
+
+	fmt.Fprintln(w, "\nSolutions:")
+	for i, p := range solutions {
+		fmt.Fprintf(w, "\n--- Solution %d (%d moves) ---\n", i+1, len(p.tab)-1)
+		fmt.Fprint(w, p)
 	}
 }
